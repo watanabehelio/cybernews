@@ -1,12 +1,19 @@
+# backend/app.py
+from datetime import datetime
+from typing import Optional
+
 from fastapi import FastAPI, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Optional
-from datetime import datetime
+
 from database import SessionLocal, init_db
 from models import Article
 from scheduler import start_scheduler
+from classifier import classify_category, CATEGORIES  # para reclassificar e listar categorias
+
 
 app = FastAPI(title="CiberSec News Hub API", version="0.1.0")
+
+# CORS liberado (front estático na Render)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -15,12 +22,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# cria tabelas (se não existirem) e inicia o scheduler diário 07:00 BRT
 init_db()
 start_scheduler(app)
+
 
 @app.get("/health")
 def health():
     return {"status": "ok", "time": datetime.utcnow().isoformat()}
+
 
 @app.get("/articles")
 def list_articles(
@@ -31,14 +41,16 @@ def list_articles(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     limit: int = Query(20, ge=1, le=100),
-    offset: int = Query(0, ge=0)
+    offset: int = Query(0, ge=0),
 ):
     db = SessionLocal()
     try:
         query = db.query(Article)
         if q:
             like = f"%{q.lower()}%"
-            query = query.filter((Article.title.ilike(like)) | (Article.summary.ilike(like)))
+            query = query.filter(
+                (Article.title.ilike(like)) | (Article.summary.ilike(like))
+            )
         if category:
             query = query.filter(Article.category == category)
         if severity:
@@ -49,28 +61,31 @@ def list_articles(
             query = query.filter(Article.published_at >= date_from)
         if date_to:
             query = query.filter(Article.published_at <= date_to)
+
         total = query.count()
-        items = query.order_by(Article.published_at.desc()).offset(offset).limit(limit).all()
+        items = (
+            query.order_by(Article.published_at.desc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
         return {"total": total, "items": [i.to_dict() for i in items]}
     finally:
         db.close()
 
+
+# -------- Ingestão em background --------
 def _run_ingestion():
-    # função isolada para rodar em background
     from ingest.rss_ingestor import run as run_rss
     run_rss()
 
 @app.post("/ingest/run")
 def run_ingestion(background_tasks: BackgroundTasks):
-    # dispara a coleta e responde imediatamente
     background_tasks.add_task(_run_ingestion)
     return {"status": "started"}
 
-# backend/app.py (adicione)
-from classifier import classify_category
-from database import SessionLocal
-from models import Article
 
+# -------- Reclassificação em massa --------
 @app.post("/admin/reclassify")
 def admin_reclassify():
     db = SessionLocal()
@@ -85,4 +100,11 @@ def admin_reclassify():
         return {"reclassified": updated}
     finally:
         db.close()
+
+
+# -------- Listar categorias editoriais (para o front) --------
+@app.get("/meta/categories")
+def meta_categories():
+    # expõe a lista de categorias definida no classifier.py
+    return {"categories": CATEGORIES}
 

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
 from datetime import datetime
@@ -55,8 +55,13 @@ def list_articles(
     finally:
         db.close()
 
-@app.post("/ingest/run")
-def run_ingestion():
+def _run_ingestion():
+    # função isolada para rodar em background
     from ingest.rss_ingestor import run as run_rss
-    count = run_rss()
-    return {"ingested": count}
+    run_rss()
+
+@app.post("/ingest/run")
+def run_ingestion(background_tasks: BackgroundTasks):
+    # dispara a coleta e responde imediatamente
+    background_tasks.add_task(_run_ingestion)
+    return {"status": "started"}

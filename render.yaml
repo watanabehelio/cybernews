@@ -1,5 +1,7 @@
-# Render Blueprint for zero-cost (Free tier) deployment
-# Docs: https://render.com/docs/free
+# Render Blueprint (Free tier) — API (web) + Frontend (static site) em formato "clássico"
+# Este formato usa duas seções: `services:` para web/worker e `staticSites:` para sites estáticos.
+# Após salvar, volte na Render e clique em "Refresh" e depois "Deploy Blueprint".
+
 services:
   - type: web
     name: cibersec-news-api
@@ -14,18 +16,23 @@ services:
         value: America/Sao_Paulo
       - key: DB_URL
         value: sqlite:///cibersec.db
-    disk:
-      name: api-data
-      mountPath: /opt/render/project/src
-      sizeGB: 1
 
-  - type: static_site
-    name: cibersec-news-front
+staticSites:
+  - name: cibersec-news-front
     plan: free
-    buildCommand: "echo 'Static build (no step)'"  # static site
-    staticPublishPath: frontend
+    buildCommand: "echo 'Static build (no step)'"
+    publishPath: frontend
     envVars:
       - key: API_URL
-        value: https://cibersec-news-api.onrender.com  # update automatically after first deploy if needed
+        value: https://cibersec-news-api.onrender.com   # depois do 1º deploy, troque para a URL real da sua API
       - key: LOGO_URL
-        value: https://via.placeholder.com/200x60?text=HMW+Solucoes  # substitua pelo logo real
+        value: https://via.placeholder.com/220x60?text=HMW+Solucoes
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: no-store
+    redirects:
+      # mantém SPA se evoluir o front
+      - source: /*
+        destination: /index.html
+        status: 200

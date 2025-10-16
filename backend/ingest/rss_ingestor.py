@@ -5,6 +5,7 @@ from database import SessionLocal
 from models import Article
 from classifier import classify_category
 from risk import score_and_severity
+from sqlalchemy.exc import IntegrityError  # <-- importante
 
 BASE = Path(__file__).resolve().parent
 SOURCES = BASE / "sources.yaml"
@@ -25,42 +26,60 @@ def run() -> int:
                 continue
             feed = feedparser.parse(s["url"])
             for e in feed.entries:
-                link = e.get("link")
-                if not link:
-                    continue
-                uid = canonical_id(link)
-                if db.query(Article).filter(Article.uid == uid).first():
-                    continue
-                title = (e.get("title") or "").strip()
-                summary = (e.get("summary") or e.get("description") or "").strip()
-                published = e.get("published") or e.get("updated")
-                published_at = None
-                if published and getattr(e, "published_parsed", None):
-                    try:
-                        published_at = datetime(*e.published_parsed[:6])
-                    except Exception:
+                try:
+                    link = e.get("link")
+                    if not link:
+                        continue
+
+                    uid = canonical_id(link)
+
+                    # se já existe, pule (curto-circuito eficiente)
+                    if db.query(Article).filter(Article.uid == uid).first():
+                        continue
+
+                    title = (e.get("title") or "").strip()
+                    summary = (e.get("summary") or e.get("description") or "").strip()
+
+                    published = e.get("published") or e.get("updated")
+                    if published and getattr(e, "published_parsed", None):
+                        try:
+                            published_at = datetime(*e.published_parsed[:6])
+                        except Exception:
+                            published_at = datetime.utcnow()
+                    else:
                         published_at = datetime.utcnow()
-                else:
-                    published_at = datetime.utcnow()
 
-                category = classify_category(title, summary)
-                risk_score, severity = score_and_severity(title, summary)
+                    category = classify_category(title, summary)
+                    risk_score, severity = score_and_severity(title, summary)
 
-                art = Article(
-                    uid=uid,
-                    title=title[:512],
-                    summary=summary[:4000],
-                    url=link,
-                    source=s["name"],
-                    category=category,
-                    risk_score=risk_score,
-                    severity=severity,
-                    published_at=published_at,
-                    created_at=datetime.utcnow(),
-                )
-                db.add(art)
-                ingested += 1
-        db.commit()
+                    art = Article(
+                        uid=uid,
+                        title=title[:512],
+                        summary=summary[:4000],
+                        url=link,
+                        source=s["name"],
+                        category=category,
+                        risk_score=risk_score,
+                        severity=severity,
+                        published_at=published_at,
+                        created_at=datetime.utcnow(),
+                    )
+
+                    # Tente inserir; se for duplicado, ignorar e seguir
+                    db.add(art)
+                    try:
+                        db.commit()
+                        ingested += 1
+                    except IntegrityError:
+                        db.rollback()  # desfaz só este item
+                        # duplicado: ignore e prossiga
+                        continue
+
+                except Exception:
+                    # Qualquer erro pontual no item não deve parar a coleta inteira
+                    db.rollback()
+                    continue
     finally:
         db.close()
+
     return ingested

@@ -5,7 +5,7 @@ from database import SessionLocal
 from models import Article
 from classifier import classify_category
 from risk import score_and_severity
-from sqlalchemy.exc import IntegrityError  # <-- importante
+from sqlalchemy.exc import IntegrityError
 
 BASE = Path(__file__).resolve().parent
 SOURCES = BASE / "sources.yaml"
@@ -32,8 +32,6 @@ def run() -> int:
                         continue
 
                     uid = canonical_id(link)
-
-                    # se já existe, pule (curto-circuito eficiente)
                     if db.query(Article).filter(Article.uid == uid).first():
                         continue
 
@@ -65,18 +63,15 @@ def run() -> int:
                         created_at=datetime.utcnow(),
                     )
 
-                    # Tente inserir; se for duplicado, ignorar e seguir
                     db.add(art)
                     try:
                         db.commit()
                         ingested += 1
                     except IntegrityError:
-                        db.rollback()  # desfaz só este item
-                        # duplicado: ignore e prossiga
+                        db.rollback()
+                        # notícia duplicada, ignorar e seguir
                         continue
-
-                except Exception:
-                    # Qualquer erro pontual no item não deve parar a coleta inteira
+                except Exception as ex:
                     db.rollback()
                     continue
     finally:

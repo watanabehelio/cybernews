@@ -65,3 +65,24 @@ def run_ingestion(background_tasks: BackgroundTasks):
     # dispara a coleta e responde imediatamente
     background_tasks.add_task(_run_ingestion)
     return {"status": "started"}
+
+# backend/app.py (adicione)
+from classifier import classify_category
+from database import SessionLocal
+from models import Article
+
+@app.post("/admin/reclassify")
+def admin_reclassify():
+    db = SessionLocal()
+    updated = 0
+    try:
+        for art in db.query(Article).all():
+            new_cat = classify_category(art.title or "", art.summary or "")
+            if new_cat != art.category:
+                art.category = new_cat
+                updated += 1
+        db.commit()
+        return {"reclassified": updated}
+    finally:
+        db.close()
+

@@ -1,0 +1,31 @@
+# Render Blueprint for zero-cost (Free tier) deployment
+# Docs: https://render.com/docs/free
+services:
+  - type: web
+    name: cibersec-news-api
+    env: python
+    plan: free
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: uvicorn backend.app:app --host 0.0.0.0 --port 10000
+    runtime: python3
+    autoDeploy: true
+    envVars:
+      - key: TZ
+        value: America/Sao_Paulo
+      - key: DB_URL
+        value: sqlite:///cibersec.db
+    disk:
+      name: api-data
+      mountPath: /opt/render/project/src
+      sizeGB: 1
+
+  - type: static
+    name: cibersec-news-front
+    plan: free
+    buildCommand: "echo 'Static build (no step)'"  # static site
+    staticPublishPath: frontend
+    envVars:
+      - key: API_URL
+        value: https://cibersec-news-api.onrender.com  # update automatically after first deploy if needed
+      - key: LOGO_URL
+        value: https://via.placeholder.com/200x60?text=HMW+Solucoes  # substitua pelo logo real

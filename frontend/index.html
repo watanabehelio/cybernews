@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CiberSec News Hub</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>.chip{font-size:.75rem;padding:.125rem .5rem;border-radius:999px}</style>
+</head>
+<body class="bg-slate-50">
+  <header class="bg-slate-900 text-white p-6 shadow flex items-center gap-4">
+    <img id="logo" alt="Logo" class="h-10 hidden" />
+    <div>
+      <h1 class="text-2xl font-bold">CiberSec News Hub</h1>
+      <p class="text-slate-300">Atualização diária automática às 07:00 (BRT)</p>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto p-4">
+    <section class="grid md:grid-cols-6 gap-3 mb-4">
+      <input id="q" class="border rounded p-2 md:col-span-2" placeholder="Busca…" />
+      <select id="category" class="border rounded p-2">
+        <option value="">Categoria</option>
+        <option>Ameaças & Campanhas</option>
+        <option>Vulnerabilidades & Patches</option>
+        <option>Incidentes & Vazamentos</option>
+        <option>Governança & Compliance</option>
+        <option>IA & Segurança/Ética</option>
+        <option>Privacidade & Proteção de Dados</option>
+        <option>Mercado & Carreira</option>
+        <option>Pesquisa & Boas Práticas</option>
+      </select>
+      <select id="severity" class="border rounded p-2">
+        <option value="">Severidade</option>
+        <option>Baixa</option>
+        <option>Média</option>
+        <option>Alta</option>
+        <option>Crítica</option>
+      </select>
+      <input id="date_from" type="date" class="border rounded p-2" />
+      <input id="date_to" type="date" class="border rounded p-2" />
+      <select id="source" class="border rounded p-2">
+        <option value="">Fonte</option>
+        <option>BoletimSec</option>
+        <option>Canaltech</option>
+        <option>Canaltech-Seguranca</option>
+        <option>CISO Advisor</option>
+        <option>Minuto da Segurança da Informação</option>
+        <option>Olhar Digital</option>
+        <option>Security Leaders</option>
+        <option>SegInfo</option>
+        <option>Security Report</option>
+        <option>TI Inside Online</option>
+      </select>
+      <button id="apply" class="bg-slate-900 text-white rounded p-2">Aplicar</button>
+    </section>
+
+    <section id="list" class="space-y-3"></section>
+
+    <div class="flex gap-2 mt-4">
+      <button id="prev" class="border rounded px-3 py-2">Anterior</button>
+      <button id="next" class="border rounded px-3 py-2">Próxima</button>
+    </div>
+  </main>
+
+  <script>
+    const API_URL = (typeof process !== 'undefined' && process.env && process.env.API_URL) || (window.API_URL || ''); // Render sets env for build-time only; fallback manual
+    const api = API_URL || 'https://cibersec-news-api.onrender.com';
+    const LOGO_URL = (typeof process !== 'undefined' && process.env && process.env.LOGO_URL) || (window.LOGO_URL || '');
+
+    if (LOGO_URL) {
+      const img = document.getElementById('logo');
+      img.src = LOGO_URL;
+      img.classList.remove('hidden');
+    }
+
+    let offset = 0; const limit = 20;
+    async function fetchArticles() {
+      const params = new URLSearchParams();
+      const q = document.getElementById('q').value.trim();
+      const category = document.getElementById('category').value;
+      const severity = document.getElementById('severity').value;
+      const source = document.getElementById('source').value;
+      const date_from = document.getElementById('date_from').value;
+      const date_to = document.getElementById('date_to').value;
+      if (q) params.append('q', q);
+      if (category) params.append('category', category);
+      if (severity) params.append('severity', severity);
+      if (source) params.append('source', source);
+      if (date_from) params.append('date_from', date_from);
+      if (date_to) params.append('date_to', date_to);
+      params.append('limit', limit); params.append('offset', offset);
+
+      const res = await fetch(`${api}/articles?${params.toString()}`);
+      const data = await res.json();
+      render(data.items);
+      document.getElementById('prev').disabled = offset === 0;
+      document.getElementById('next').disabled = offset + limit >= data.total;
+    }
+
+    function badgeSeverity(sev){
+      const map = { 'Baixa':'bg-emerald-100 text-emerald-800', 'Média':'bg-amber-100 text-amber-800', 'Alta':'bg-orange-100 text-orange-800', 'Crítica':'bg-red-100 text-red-800' };
+      return map[sev] || 'bg-slate-100 text-slate-800';
+    }
+
+    function render(items){
+      const list = document.getElementById('list');
+      list.innerHTML = '';
+      items.forEach(a => {
+        const card = document.createElement('article');
+        card.className = 'bg-white rounded-xl shadow p-4';
+        card.innerHTML = `
+          <div class="flex justify-between items-start">
+            <div>
+              <a href="${a.url}" target="_blank" class="text-lg font-semibold text-slate-900 hover:underline">${a.title}</a>
+              <div class="text-sm text-slate-500">${a.published_at ? new Date(a.published_at).toLocaleString('pt-BR') : ''} • ${a.source || ''}</div>
+            </div>
+            <span class="text-xs px-2 py-1 rounded ${badgeSeverity(a.severity)}">${a.severity}</span>
+          </div>
+          <div class="mt-2 text-slate-700">${a.summary || ''}</div>
+          <div class="mt-2 text-xs text-slate-500">Categoria: ${a.category} • Risco: ${a.risk_score}</div>
+        `;
+        list.appendChild(card);
+      });
+    }
+
+    document.getElementById('apply').addEventListener('click', () => { offset = 0; fetchArticles(); });
+    document.getElementById('prev').addEventListener('click', () => { offset = Math.max(0, offset - limit); fetchArticles(); });
+    document.getElementById('next').addEventListener('click', () => { offset += limit; fetchArticles(); });
+    fetchArticles();
+  </script>
+</body>
+</html>

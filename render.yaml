@@ -19,7 +19,7 @@ services:
       mountPath: /opt/render/project/src
       sizeGB: 1
 
-  - type: static
+  - type: static_site
     name: cibersec-news-front
     plan: free
     buildCommand: "echo 'Static build (no step)'"  # static site
